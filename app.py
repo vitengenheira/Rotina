@@ -1,9 +1,36 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import os
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="Minha Rotina", page_icon="📅", layout="wide")
+
+# --- Estilo CSS Customizado ---
+# Injetamos um pouco de CSS para melhorar a aparência dos botões e expanders.
+st.markdown("""
+<style>
+    /* Estilo para os botões */
+    .stButton > button {
+        border-radius: 12px;
+        border: 2px solid #007BFF;
+        color: #007BFF;
+        background-color: transparent;
+        transition: all 0.2s ease-in-out;
+    }
+    .stButton > button:hover {
+        border-color: #0056b3;
+        color: white;
+        background-color: #007BFF;
+    }
+    /* Aumenta o tamanho da fonte nos cabeçalhos dos expanders */
+    .st-expander header {
+        font-size: 1.25rem;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 # --- Arquivos para armazenar dados ---
 AULAS_CSV = "aulas.csv"
@@ -13,10 +40,10 @@ LEMBRETES_CSV = "lembretes.csv"
 
 # --- Função para carregar CSV ---
 def carregar_csv(caminho, colunas):
-    try:
-        return pd.read_csv(caminho)
-    except FileNotFoundError:
+    """Carrega um arquivo CSV. Se não existir, cria um DataFrame vazio."""
+    if not os.path.exists(caminho):
         return pd.DataFrame(columns=colunas)
+    return pd.read_csv(caminho)
 
 # --- Inicializar dataframes ---
 df_aulas = carregar_csv(AULAS_CSV, ["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
@@ -31,46 +58,51 @@ menu = st.sidebar.radio("Menu", ["Hoje", "Cadastrar Aulas", "Cadastrar Atividade
 # PÁGINA "HOJE"
 # ==========================================================
 if menu == "Hoje":
-    st.title("📅 Rotina de Hoje")
+    st.title("📅 Minha Rotina")
 
-    hoje = datetime.now().strftime("%Y-%m-%d")
-    dia_semana = datetime.now().strftime("%A")  # exemplo: Monday, Tuesday
+    hoje_dt = datetime.now()
+    hoje_str = hoje_dt.strftime("%Y-%m-%d")
+    dia_semana_en = hoje_dt.strftime("%A") # English day name
 
-    st.subheader(f"Hoje é {dia_semana}, {hoje}")
+    # Dicionário para traduzir o dia da semana
+    dias_pt = {
+        "Monday": "Segunda-feira", "Tuesday": "Terça-feira", "Wednesday": "Quarta-feira",
+        "Thursday": "Quinta-feira", "Friday": "Sexta-feira", "Saturday": "Sábado", "Sunday": "Domingo"
+    }
+    dia_semana_pt = dias_pt.get(dia_semana_en, dia_semana_en)
 
-    # --- Mostrar aulas de hoje ---
-    st.markdown("### 📚 Aulas de Hoje")
-    aulas_hoje = df_aulas[df_aulas["dia"] == dia_semana]
-    if aulas_hoje.empty:
-        st.info("Nenhuma aula cadastrada para hoje.")
-    else:
-        st.table(aulas_hoje[["hora_inicio", "hora_fim", "disciplina", "sala"]])
+    st.subheader(f"Hoje é {dia_semana_pt}, {hoje_dt.strftime('%d/%m/%Y')}")
 
-    # --- Mostrar atividades avaliativas ---
-    st.markdown("### 📝 Atividades Avaliativas")
-    atividades_hoje = df_atividades[df_atividades["data"] == hoje]
-    if atividades_hoje.empty:
-        st.info("Nenhuma atividade para hoje.")
-    else:
-        st.table(atividades_hoje[["disciplina", "descricao"]])
+    # --- Seções com Expanders para melhor visualização no celular ---
+    with st.expander("📚 Aulas de Hoje", expanded=True):
+        aulas_hoje = df_aulas[df_aulas["dia"] == dia_semana_en].sort_values("hora_inicio")
+        if aulas_hoje.empty:
+            st.info("Nenhuma aula cadastrada para hoje.")
+        else:
+            st.table(aulas_hoje[["hora_inicio", "hora_fim", "disciplina", "sala"]])
 
-    # --- Mostrar lembretes ---
-    st.markdown("### 📌 Lembretes / Consultas")
-    lembretes_hoje = df_lembretes[df_lembretes["data"] == hoje]
-    if lembretes_hoje.empty:
-        st.info("Nenhum lembrete para hoje.")
-    else:
-        st.table(lembretes_hoje[["descricao"]])
+    with st.expander("📝 Atividades Avaliativas", expanded=True):
+        atividades_hoje = df_atividades[df_atividades["data"] == hoje_str]
+        if atividades_hoje.empty:
+            st.info("Nenhuma atividade para hoje.")
+        else:
+            st.table(atividades_hoje[["disciplina", "descricao"]])
+
+    with st.expander("📌 Lembretes / Consultas"):
+        lembretes_hoje = df_lembretes[df_lembretes["data"] == hoje_str]
+        if lembretes_hoje.empty:
+            st.info("Nenhum lembrete para hoje.")
+        else:
+            st.table(lembretes_hoje[["descricao"]])
+
+    st.markdown("---") # Linha divisória
 
     # --- Hábitos ---
-    st.markdown("### 💧 Hábitos do Dia")
+    st.subheader("💧 Hábitos do Dia")
 
-    # Configuração da meta e copo
-    meta_agua = 2000  # meta diária em ml
-    copo_padrao = st.number_input("⚙️ Tamanho do copo (ml)", min_value=50, max_value=1000, value=250, step=50)
-
-    if hoje in df_habitos["data"].values:
-        habito_hoje = df_habitos[df_habitos["data"] == hoje].iloc[0]
+    # Carregar ou inicializar os hábitos de hoje
+    if hoje_str in df_habitos["data"].values:
+        habito_hoje = df_habitos[df_habitos["data"] == hoje_str].iloc[0]
         agua = int(habito_hoje["agua"])
         exercicio = bool(habito_hoje["exercicio"])
         hobby = bool(habito_hoje["hobby"])
@@ -78,33 +110,45 @@ if menu == "Hoje":
     else:
         agua, exercicio, hobby, leitura = 0, False, False, False
 
+    # Configuração da meta e copo
+    meta_agua = 2000  # meta diária em ml
+    copo_padrao = st.number_input("⚙️ Tamanho do copo (ml)", min_value=50, max_value=1000, value=250, step=50)
+
     col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button(f"💧 Beber 1 copo (+{copo_padrao} ml)"):
-            agua += copo_padrao
-    with col2:
-        if st.button("🥤 Beber 500 ml"):
-            agua += 500
-    with col3:
-        if st.button("🍼 Beber 1 garrafa (2000 ml)"):
-            agua += 2000
+    if col1.button(f"💧 Beber 1 copo (+{copo_padrao} ml)"):
+        agua += copo_padrao
+    if col2.button("🥤 Beber 500 ml"):
+        agua += 500
+    if col3.button("🍼 Beber 1 garrafa (1000 ml)"): # Ajustado para 1000ml para ser mais realista
+        agua += 1000
+
+    # Atualiza o DataFrame de hábitos em tempo real após clicar nos botões de água
+    df_habitos = df_habitos[df_habitos["data"] != hoje_str]
+    novo_habito = pd.DataFrame([[hoje_str, agua, exercicio, hobby, leitura]],
+                               columns=["data", "agua", "exercicio", "hobby", "leitura"])
+    df_habitos = pd.concat([df_habitos, novo_habito], ignore_index=True)
+    df_habitos.to_csv(HABITOS_CSV, index=False)
+
 
     # Exibição do total de água
     st.progress(min(1.0, agua / meta_agua))
-    st.write(f"Você já bebeu **{agua} ml** de água hoje. Meta: {meta_agua} ml")
+    st.write(f"Você já bebeu **{agua} ml** de água hoje. Meta: **{meta_agua} ml**")
 
     # Outros hábitos
-    exercicio = st.checkbox("✅ Fiz exercício", value=exercicio)
-    hobby = st.checkbox("🎸 Fiz hobby/violão", value=hobby)
-    leitura = st.checkbox("📖 Fiz leitura", value=leitura)
+    st.markdown("##### Outros Hábitos:")
+    exercicio_check = st.checkbox("✅ Fiz exercício", value=exercicio)
+    hobby_check = st.checkbox("🎸 Fiz hobby/violão", value=hobby)
+    leitura_check = st.checkbox("📖 Fiz leitura", value=leitura)
 
-    if st.button("Salvar hábitos de hoje"):
-        df_habitos = df_habitos[df_habitos["data"] != hoje]
-        novo = pd.DataFrame([[hoje, agua, exercicio, hobby, leitura]],
-                            columns=["data", "agua", "exercicio", "hobby", "leitura"])
-        df_habitos = pd.concat([df_habitos, novo], ignore_index=True)
+    # Botão para salvar explicitamente (opcional, mas bom para confirmar)
+    if st.button("Salvar Hábitos"):
+        df_habitos = df_habitos[df_habitos["data"] != hoje_str]
+        novo_habito_final = pd.DataFrame([[hoje_str, agua, exercicio_check, hobby_check, leitura_check]],
+                                         columns=["data", "agua", "exercicio", "hobby", "leitura"])
+        df_habitos = pd.concat([df_habitos, novo_habito_final], ignore_index=True)
         df_habitos.to_csv(HABITOS_CSV, index=False)
-        st.success("Hábitos salvos!")
+        st.toast("Hábitos salvos com sucesso!", icon="🎉")
+
 
 # ==========================================================
 # PÁGINA "CADASTRAR AULAS"
@@ -112,20 +156,23 @@ if menu == "Hoje":
 elif menu == "Cadastrar Aulas":
     st.title("📚 Cadastrar Aulas")
 
-    dias_semana = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    dia = st.selectbox("Dia da semana", dias_semana)
-    hora_inicio = st.text_input("Hora início (HH:MM)", "07:10")
-    hora_fim = st.text_input("Hora fim (HH:MM)", "08:00")
-    disciplina = st.text_input("Disciplina")
-    sala = st.text_input("Sala")
+    with st.form("form_aulas", clear_on_submit=True):
+        dias_semana = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        dia = st.selectbox("Dia da semana", dias_semana)
+        hora_inicio = st.text_input("Hora início (HH:MM)", "07:10")
+        hora_fim = st.text_input("Hora fim (HH:MM)", "08:00")
+        disciplina = st.text_input("Disciplina")
+        sala = st.text_input("Sala")
+        submitted = st.form_submit_button("Salvar Aula")
 
-    if st.button("Salvar Aula"):
-        nova = pd.DataFrame([[dia, hora_inicio, hora_fim, disciplina, sala]],
-                            columns=["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
-        df_aulas = pd.concat([df_aulas, nova], ignore_index=True)
-        df_aulas.to_csv(AULAS_CSV, index=False)
-        st.success("Aula cadastrada!")
+        if submitted:
+            nova = pd.DataFrame([[dia, hora_inicio, hora_fim, disciplina, sala]],
+                                columns=["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
+            df_aulas = pd.concat([df_aulas, nova], ignore_index=True)
+            df_aulas.to_csv(AULAS_CSV, index=False)
+            st.toast("Aula cadastrada!", icon="✅")
 
+    st.markdown("### Aulas Cadastradas")
     st.dataframe(df_aulas)
 
 # ==========================================================
@@ -134,17 +181,20 @@ elif menu == "Cadastrar Aulas":
 elif menu == "Cadastrar Atividade":
     st.title("📝 Cadastrar Atividade Avaliativa")
 
-    data = st.date_input("Data")
-    disciplina = st.text_input("Disciplina")
-    descricao = st.text_area("Descrição")
+    with st.form("form_atividades", clear_on_submit=True):
+        data = st.date_input("Data")
+        disciplina = st.text_input("Disciplina")
+        descricao = st.text_area("Descrição")
+        submitted = st.form_submit_button("Salvar Atividade")
 
-    if st.button("Salvar Atividade"):
-        nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), disciplina, descricao]],
-                            columns=["data", "disciplina", "descricao"])
-        df_atividades = pd.concat([df_atividades, nova], ignore_index=True)
-        df_atividades.to_csv(ATIVIDADES_CSV, index=False)
-        st.success("Atividade salva!")
+        if submitted:
+            nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), disciplina, descricao]],
+                                columns=["data", "disciplina", "descricao"])
+            df_atividades = pd.concat([df_atividades, nova], ignore_index=True)
+            df_atividades.to_csv(ATIVIDADES_CSV, index=False)
+            st.toast("Atividade salva!", icon="✅")
 
+    st.markdown("### Atividades Cadastradas")
     st.dataframe(df_atividades)
 
 # ==========================================================
@@ -153,14 +203,17 @@ elif menu == "Cadastrar Atividade":
 elif menu == "Cadastrar Lembrete":
     st.title("📌 Cadastrar Lembrete / Consulta")
 
-    data = st.date_input("Data")
-    descricao = st.text_area("Descrição do lembrete")
+    with st.form("form_lembretes", clear_on_submit=True):
+        data = st.date_input("Data")
+        descricao = st.text_area("Descrição do lembrete")
+        submitted = st.form_submit_button("Salvar Lembrete")
 
-    if st.button("Salvar Lembrete"):
-        nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), descricao]],
-                            columns=["data", "descricao"])
-        df_lembretes = pd.concat([df_lembretes, nova], ignore_index=True)
-        df_lembretes.to_csv(LEMBRETES_CSV, index=False)
-        st.success("Lembrete salvo!")
+        if submitted:
+            nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), descricao]],
+                                columns=["data", "descricao"])
+            df_lembretes = pd.concat([df_lembretes, nova], ignore_index=True)
+            df_lembretes.to_csv(LEMBRETES_CSV, index=False)
+            st.toast("Lembrete salvo!", icon="✅")
 
+    st.markdown("### Lembretes Cadastrados")
     st.dataframe(df_lembretes)
