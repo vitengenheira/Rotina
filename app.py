@@ -183,9 +183,12 @@ if menu == "Hoje":
             st.markdown(f"🏠 **Casa:** {tarefa['tarefa']}")
         # Eventos do dia (sem horário)
         for _, evento in eventos_hoje[eventos_hoje['hora_inicio'] == ''].iterrows():
-            st.markdown(f"{ICON_MAP.get(evento['tipo'], '🔔')} **{evento['tipo']}:** {evento['titulo']}")
+            titulo_evento = f"{ICON_MAP.get(evento['tipo'], '🔔')} **{evento['tipo']}:** {evento['titulo']}"
             if evento['descricao']:
-                st.markdown(f"> _{evento['descricao']}_")
+                with st.expander(titulo_evento):
+                    st.write(evento['descricao'])
+            else:
+                st.markdown(titulo_evento)
 
 
     with col2:
@@ -391,7 +394,7 @@ elif menu == "Cadastros":
                     nova_tarefa = pd.DataFrame([[dia_en, tarefa]], columns=["dia_semana", "tarefa"])
                     df_tarefas = pd.concat([df_tarefas, nova_tarefa], ignore_index=True)
                     df_tarefas.to_csv(TAREFAS_CSV, index=False)
-                    st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="�")
+                    st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="👍")
         st.markdown("### Seu Cronograma de Tarefas")
         for index, row in df_tarefas.iterrows():
             col1, col2 = st.columns([0.9, 0.1])
