@@ -193,7 +193,7 @@ if menu == "Hoje":
         agua = int(df_habitos[df_habitos["data"] == hoje_str]["agua"].iloc[0]) if hoje_str in df_habitos["data"].values else 0
         if hoje_str in df_rotina_matinal["data"].values:
             rotina_hoje = df_rotina_matinal[df_rotina_matinal["data"] == hoje_str].iloc[0]
-            cama, dentes, rosto, meditacao = bool(rotina_hoje["cama_arrumada"]), bool(rotina_hoje["dentes_escovados"]), bool(rotina_hoje["rosto_lavado"]), bool(rotina_hoje["meditacao"])
+            cama, dentes, rosto, meditacao = bool(eval(str(rotina_hoje["cama_arrumada"]))), bool(eval(str(rotina_hoje["dentes_escovados"]))), bool(eval(str(rotina_hoje["rosto_lavado"]))), bool(eval(str(rotina_hoje["meditacao"])))
         else:
             cama, dentes, rosto, meditacao = False, False, False, False
 
@@ -214,7 +214,8 @@ if menu == "Hoje":
         habitos_feitos_hoje = df_habitos_feitos[df_habitos_feitos["data"] == hoje_str]
         habitos_marcados = {}
         for habito in habitos_personalizados:
-            feito = bool(habitos_feitos_hoje[habitos_feitos_hoje["habito"] == habito]["feito"].iloc[0]) if habito in habitos_feitos_hoje["habito"].values else False
+            feito_df = habitos_feitos_hoje[habitos_feitos_hoje["habito"] == habito]
+            feito = bool(eval(str(feito_df["feito"].iloc[0]))) if not feito_df.empty else False
             habitos_marcados[habito] = st.checkbox(habito, value=feito)
 
         if st.button("Salvar Autocuidado"):
@@ -285,7 +286,7 @@ elif menu == "Cadastros":
     st.title("⚙️ Central de Cadastros")
     
     tipo_cadastro = st.selectbox("O que você deseja cadastrar ou gerenciar?", 
-                                 ["Aulas", "Compromissos", "Tarefas da Casa", "Hábitos Personalizados"])
+                                 ["Aulas", "Compromissos", "Tarefas da Casa", "Checklist de Hábitos (sem horário)"])
 
     if tipo_cadastro == "Aulas":
         st.subheader("📚 Gerenciar Disciplinas e Aulas")
@@ -328,14 +329,20 @@ elif menu == "Cadastros":
                 titulo = st.text_input("Título do Compromisso (Ex: Academia, Estudar Python)")
                 tipo = st.selectbox("Tipo de Compromisso", ["Estudo", "Exercício", "Lembrete", "Outro"])
                 dias_recorrentes = st.multiselect("Selecione os dias em que se repete:", options=list(DIAS_PT.values()))
-                col1, col2 = st.columns(2)
-                hora_inicio_rec = col1.time_input("Hora de Início")
-                hora_fim_rec = col2.time_input("Hora de Término (opcional)")
+                horarios_recorrentes = {}
+                for dia_pt in dias_recorrentes:
+                    st.markdown(f"--- \n **Horário para {dia_pt}**")
+                    col1, col2 = st.columns(2)
+                    hora_inicio_rec = col1.time_input("Hora de Início", key=f"rec_inicio_{dia_pt}")
+                    hora_fim_rec = col2.time_input("Hora de Término (opcional)", key=f"rec_fim_{dia_pt}")
+                    horarios_recorrentes[dia_pt] = (hora_inicio_rec, hora_fim_rec)
+                
                 if st.form_submit_button("Salvar Compromisso Recorrente"):
-                    for dia_pt in dias_recorrentes:
-                        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
-                        nova_ativ = pd.DataFrame([[titulo, tipo, dia_en, hora_inicio_rec.strftime('%H:%M'), hora_fim_rec.strftime('%H:%M') if hora_fim_rec else '']], columns=colunas_atividades_recorrentes)
-                        df_atividades_recorrentes = pd.concat([df_atividades_recorrentes, nova_ativ], ignore_index=True)
+                    for dia_pt, (inicio, fim) in horarios_recorrentes.items():
+                        if inicio:
+                            dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+                            nova_ativ = pd.DataFrame([[titulo, tipo, dia_en, inicio.strftime('%H:%M'), fim.strftime('%H:%M') if fim else '']], columns=colunas_atividades_recorrentes)
+                            df_atividades_recorrentes = pd.concat([df_atividades_recorrentes, nova_ativ], ignore_index=True)
                     df_atividades_recorrentes.to_csv(ATIVIDADES_RECORRENTES_CSV, index=False)
                     st.success("Compromisso recorrente salvo!")
             st.markdown("#### Compromissos Recorrentes Cadastrados")
@@ -384,7 +391,7 @@ elif menu == "Cadastros":
                     nova_tarefa = pd.DataFrame([[dia_en, tarefa]], columns=["dia_semana", "tarefa"])
                     df_tarefas = pd.concat([df_tarefas, nova_tarefa], ignore_index=True)
                     df_tarefas.to_csv(TAREFAS_CSV, index=False)
-                    st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="👍")
+                    st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="�")
         st.markdown("### Seu Cronograma de Tarefas")
         for index, row in df_tarefas.iterrows():
             col1, col2 = st.columns([0.9, 0.1])
@@ -395,9 +402,9 @@ elif menu == "Cadastros":
                 df_tarefas.to_csv(TAREFAS_CSV, index=False)
                 st.rerun()
 
-    elif tipo_cadastro == "Hábitos Personalizados":
-        st.subheader("🎨 Personalizar Hábitos")
-        st.write("Adicione ou remova os hábitos que você deseja acompanhar no seu dia a dia (sem horário fixo).")
+    elif tipo_cadastro == "Checklist de Hábitos (sem horário)":
+        st.subheader("🎨 Personalizar Hábitos do Checklist")
+        st.write("Adicione ou remova os hábitos que você deseja marcar como 'feitos' no seu dia a dia (sem horário fixo).")
         with st.form("form_novo_habito", clear_on_submit=True):
             novo_habito_txt = st.text_input("Digite um novo hábito (Ex: Cuidar da pele, Ler 10 páginas)")
             if st.form_submit_button("Adicionar Hábito"):
@@ -435,8 +442,9 @@ elif menu == "Lista de Compras":
                 st.toast(f'"{item}" adicionado à lista!', icon="➕")
     st.markdown("### Itens para comprar:")
     for index, row in df_compras.iterrows():
-        comprado = st.checkbox(row["item"], value=bool(row["comprado"]), key=f"item_{index}")
-        if comprado != bool(row["comprado"]):
+        # A conversão para bool é importante aqui
+        comprado = st.checkbox(row["item"], value=bool(eval(str(row["comprado"]))), key=f"item_{index}")
+        if comprado != bool(eval(str(row["comprado"]))):
             df_compras.at[index, "comprado"] = comprado
             df_compras.to_csv(COMPRAS_CSV, index=False)
             st.rerun()
