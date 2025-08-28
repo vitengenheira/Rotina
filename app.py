@@ -100,7 +100,7 @@ ICON_MAP = {"Prova": "📝", "Trabalho": "💼", "Consulta": "🩺", "Estudo": "
 def carregar_csv(caminho, colunas):
     if not os.path.exists(caminho):
         return pd.DataFrame(columns=colunas)
-    df = pd.read_csv(caminho)
+    df = pd.read_csv(caminho, dtype=str).fillna('') # Lê todas as colunas como texto para evitar erros
     for col in colunas:
         if col not in df.columns:
             df[col] = ''
@@ -128,11 +128,11 @@ df_habitos_feitos = carregar_csv(HABITOS_FEITOS_CSV, colunas_habitos_feitos)
 df_diario = carregar_csv(DIARIO_CSV, colunas_diario)
 
 
-# --- Menu Lateral ---
-menu = st.sidebar.radio("Menu", ["Hoje", "Calendário e Visão Geral", "Cadastrar Aulas", "Cadastrar Evento", "Organizar Tarefas da Casa", "Lista de Compras", "Personalizar Hábitos"])
+# --- Menu Lateral Simplificado ---
+menu = st.sidebar.radio("Menu", ["Hoje", "Calendário", "Cadastros", "Lista de Compras"])
 
 # ==========================================================
-# PÁGINA "HOJE" - NOVO LAYOUT
+# PÁGINA "HOJE"
 # ==========================================================
 if menu == "Hoje":
     st.title("📅 Minha Rotina")
@@ -148,15 +148,15 @@ if menu == "Hoje":
     # --- Montando a Agenda do Dia ---
     agenda_do_dia = []
     # 1. Aulas
-    aulas_hoje = df_aulas[df_aulas["dia_semana"] == dia_semana_en]
+    aulas_hoje = df_aulas[df_aulas["dia_semana"].str.strip() == dia_semana_en]
     for _, aula in aulas_hoje.iterrows():
         agenda_do_dia.append({"hora_inicio": aula["hora_inicio"], "hora_fim": aula["hora_fim"], "tipo": "Aula", "titulo": f"{aula['disciplina']} (Sala: {aula['sala']})", "icone": "📚"})
     # 2. Eventos com horário
     eventos_hoje = df_eventos[df_eventos["data"] == hoje_str]
-    for _, evento in eventos_hoje[eventos_hoje['hora_inicio'].astype(str) != ''].iterrows():
+    for _, evento in eventos_hoje[eventos_hoje['hora_inicio'] != ''].iterrows():
         agenda_do_dia.append({"hora_inicio": evento["hora_inicio"], "hora_fim": evento["hora_fim"], "tipo": evento["tipo"], "titulo": f"{evento['titulo']}", "icone": ICON_MAP.get(evento['tipo'], "🔔")})
     # 3. Atividades Recorrentes com horário
-    atividades_hoje = df_atividades_recorrentes[df_atividades_recorrentes["dia_semana"] == dia_semana_en]
+    atividades_hoje = df_atividades_recorrentes[df_atividades_recorrentes["dia_semana"].str.strip() == dia_semana_en]
     for _, atividade in atividades_hoje.iterrows():
         agenda_do_dia.append({"hora_inicio": atividade["hora_inicio"], "hora_fim": atividade["hora_fim"], "tipo": atividade["tipo"], "titulo": atividade["titulo"], "icone": ICON_MAP.get(atividade['tipo'], "✨")})
 
@@ -178,16 +178,18 @@ if menu == "Hoje":
         
         st.subheader("📋 Lembretes e Tarefas da Casa")
         # Tarefas da casa (sem horário)
-        tarefas_de_hoje = df_tarefas[df_tarefas['dia_semana'] == dia_semana_en]
+        tarefas_de_hoje = df_tarefas[df_tarefas['dia_semana'].str.strip() == dia_semana_en]
         for _, tarefa in tarefas_de_hoje.iterrows():
             st.markdown(f"🏠 **Casa:** {tarefa['tarefa']}")
         # Eventos do dia (sem horário)
-        for _, evento in eventos_hoje[eventos_hoje['hora_inicio'].astype(str) == ''].iterrows():
+        for _, evento in eventos_hoje[eventos_hoje['hora_inicio'] == ''].iterrows():
             st.markdown(f"{ICON_MAP.get(evento['tipo'], '🔔')} **{evento['tipo']}:** {evento['titulo']}")
+            if evento['descricao']:
+                st.markdown(f"> _{evento['descricao']}_")
+
 
     with col2:
         st.subheader("☀️ Autocuidado Diário")
-        # Carregar dados
         agua = int(df_habitos[df_habitos["data"] == hoje_str]["agua"].iloc[0]) if hoje_str in df_habitos["data"].values else 0
         if hoje_str in df_rotina_matinal["data"].values:
             rotina_hoje = df_rotina_matinal[df_rotina_matinal["data"] == hoje_str].iloc[0]
@@ -195,13 +197,11 @@ if menu == "Hoje":
         else:
             cama, dentes, rosto, meditacao = False, False, False, False
 
-        # Rotina Matinal
         cama_check = st.checkbox("🛏️ Arrumar a cama", value=cama)
         dentes_check = st.checkbox("🦷 Escovar os dentes", value=dentes)
         rosto_check = st.checkbox("🧼 Lavar o rosto", value=rosto)
         meditacao_check = st.checkbox("🧘‍♀️ Meditar", value=meditacao)
 
-        # Hábito de Beber Água
         meta_agua = 2000
         copo_padrao = st.number_input("⚙️ Tamanho do copo (ml)", 50, 1000, 250, 50)
         c1, c2, c3 = st.columns(3)
@@ -210,7 +210,6 @@ if menu == "Hoje":
         if c3.button("🍼 Beber 1 garrafa (1000 ml)"): agua += 1000
         st.progress(min(1.0, agua / meta_agua)); st.write(f"Você já bebeu **{agua} ml** de água hoje. Meta: **{meta_agua} ml**")
 
-        # Demais Hábitos (Dinâmico)
         habitos_personalizados = df_meus_habitos["habito"].tolist()
         habitos_feitos_hoje = df_habitos_feitos[df_habitos_feitos["data"] == hoje_str]
         habitos_marcados = {}
@@ -252,118 +251,20 @@ if menu == "Hoje":
             st.toast("Sua reflexão foi salva!", icon="✨")
 
 # ==========================================================
-# PÁGINA "CADASTRAR AULAS" - COM EXCLUSÃO
+# PÁGINA "CALENDÁRIO"
 # ==========================================================
-elif menu == "Cadastrar Aulas":
-    st.title("📚 Gerenciar Disciplinas e Aulas")
-    
-    with st.form("form_aulas", clear_on_submit=True):
-        disciplina = st.text_input("Nome da Disciplina")
-        sala = st.text_input("Sala (opcional)")
-        dias_selecionados = st.multiselect("Selecione os dias da semana para esta disciplina:", options=list(DIAS_PT.values()))
-        horarios = {}
-        for dia_pt in dias_selecionados:
-            st.markdown(f"--- \n **Horário para {dia_pt}**")
-            col1, col2 = st.columns(2)
-            hora_inicio = col1.time_input("Hora de Início", key=f"inicio_{dia_pt}")
-            hora_fim = col2.time_input("Hora de Término", key=f"fim_{dia_pt}")
-            horarios[dia_pt] = (hora_inicio, hora_fim)
-        if st.form_submit_button("Salvar Disciplina e Horários"):
-            for dia_pt, (inicio, fim) in horarios.items():
-                if inicio and fim:
-                    dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
-                    nova_aula = pd.DataFrame([[disciplina, sala, dia_en, inicio.strftime('%H:%M'), fim.strftime('%H:%M')]], columns=colunas_aulas)
-                    df_aulas = pd.concat([df_aulas, nova_aula], ignore_index=True)
-            df_aulas.to_csv(AULAS_CSV, index=False)
-            st.success(f"Disciplina '{disciplina}' salva com sucesso!")
-
-    st.markdown("### Aulas Cadastradas")
-    for index, row in df_aulas.iterrows():
-        col1, col2 = st.columns([0.9, 0.1])
-        dia_pt = DIAS_PT.get(row['dia_semana'], '')
-        col1.write(f"**{row['disciplina']}** - {dia_pt} ({row['hora_inicio']} - {row['hora_fim']}) Sala: {row['sala']}")
-        if col2.button("Excluir", key=f"del_aula_{index}"):
-            df_aulas.drop(index, inplace=True)
-            df_aulas.to_csv(AULAS_CSV, index=False)
-            st.rerun()
-
-# ==========================================================
-# PÁGINA "CADASTRAR EVENTO" - COM EXCLUSÃO
-# ==========================================================
-elif menu == "Cadastrar Evento":
-    st.title("🗓️ Cadastrar Evento ou Atividade")
-    
-    recorrente = st.checkbox("É uma atividade recorrente? (Ex: Estudar, se exercitar)")
-
-    if recorrente:
-        st.markdown("### Cadastrar Atividade Recorrente")
-        with st.form("form_recorrente", clear_on_submit=True):
-            titulo = st.text_input("Título da Atividade (Ex: Academia, Estudar Python)")
-            tipo = st.selectbox("Tipo de Atividade", ["Estudo", "Exercício", "Lembrete", "Outro"])
-            dias_recorrentes = st.multiselect("Selecione os dias em que a atividade se repete:", options=list(DIAS_PT.values()))
-            col1, col2 = st.columns(2)
-            hora_inicio_rec = col1.time_input("Hora de Início")
-            hora_fim_rec = col2.time_input("Hora de Término (opcional)")
-            if st.form_submit_button("Salvar Atividade Recorrente"):
-                for dia_pt in dias_recorrentes:
-                    dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
-                    nova_ativ = pd.DataFrame([[titulo, tipo, dia_en, hora_inicio_rec.strftime('%H:%M'), hora_fim_rec.strftime('%H:%M') if hora_fim_rec else '']], columns=colunas_atividades_recorrentes)
-                    df_atividades_recorrentes = pd.concat([df_atividades_recorrentes, nova_ativ], ignore_index=True)
-                df_atividades_recorrentes.to_csv(ATIVIDADES_RECORRENTES_CSV, index=False)
-                st.success("Atividade recorrente salva!")
-        st.markdown("### Atividades Recorrentes Cadastradas")
-        for index, row in df_atividades_recorrentes.iterrows():
-            col1, col2 = st.columns([0.9, 0.1])
-            dia_pt = DIAS_PT.get(row['dia_semana'], '')
-            col1.write(f"**{row['titulo']}** ({row['tipo']}) - {dia_pt} ({row['hora_inicio']})")
-            if col2.button("Excluir", key=f"del_ativ_rec_{index}"):
-                df_atividades_recorrentes.drop(index, inplace=True)
-                df_atividades_recorrentes.to_csv(ATIVIDADES_RECORRENTES_CSV, index=False)
-                st.rerun()
-
-    else:
-        st.markdown("### Cadastrar Evento Único")
-        with st.form("form_eventos", clear_on_submit=True):
-            data = st.date_input("Data do Evento")
-            tipo = st.selectbox("Tipo de Evento", ["Prova", "Trabalho", "Consulta", "Lembrete"])
-            titulo = st.text_input("Título (Ex: Prova de Cálculo, Dentista)")
-            col1, col2 = st.columns(2)
-            hora_inicio = col1.time_input("Hora de Início (opcional)", value=None)
-            hora_fim = col2.time_input("Hora de Término (opcional)", value=None)
-            descricao = st.text_area("Descrição (Opcional)")
-            if st.form_submit_button("Salvar Evento"):
-                hora_inicio_str = hora_inicio.strftime('%H:%M') if hora_inicio else ''
-                hora_fim_str = hora_fim.strftime('%H:%M') if hora_fim else ''
-                nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), tipo, titulo, descricao, hora_inicio_str, hora_fim_str]], columns=colunas_eventos)
-                df_eventos = pd.concat([df_eventos, nova], ignore_index=True)
-                df_eventos.to_csv(EVENTOS_CSV, index=False)
-                st.toast("Evento salvo!", icon="✅")
-        st.markdown("### Eventos Cadastrados")
-        for index, row in df_eventos.iterrows():
-            col1, col2 = st.columns([0.9, 0.1])
-            col1.write(f"**{row['data']}** - {row['titulo']} ({row['tipo']})")
-            if col2.button("Excluir", key=f"del_evento_{index}"):
-                df_eventos.drop(index, inplace=True)
-                df_eventos.to_csv(EVENTOS_CSV, index=False)
-                st.rerun()
-
-# ==========================================================
-# PÁGINA "CALENDÁRIO" - ATUALIZADA
-# ==========================================================
-elif menu == "Calendário e Visão Geral":
+elif menu == "Calendário":
     st.title("🗓️ Calendário e Visão Geral")
     calendar_events = []
     cores_eventos = {"Prova": "#FF4B4B", "Trabalho": "#FFA500", "Consulta": "#1E90FF", "Estudo": "#32CD32", "Lembrete": "#9370DB", "Exercício": "#3CB371", "Outro": "#D3D3D3"}
 
-    # Adicionar eventos com e sem horário
     for _, row in df_eventos.iterrows():
         start_time = f"{row['data']}T{row['hora_inicio']}:00" if row['hora_inicio'] else row['data']
         end_time = f"{row['data']}T{row['hora_fim']}:00" if row['hora_fim'] else row['data']
         calendar_events.append({"title": f"{row['tipo']}: {row['titulo']}", "start": start_time, "end": end_time, "color": cores_eventos.get(row['tipo'], "#808080")})
 
-    # Adicionar aulas, tarefas e atividades recorrentes
     hoje = datetime.now()
-    for i in range(60): # Visualiza os próximos 60 dias
+    for i in range(60):
         data_atual = hoje + timedelta(days=i)
         data_str = data_atual.strftime("%Y-%m-%d")
         dia_semana_en = data_atual.strftime("%A")
@@ -378,30 +279,150 @@ elif menu == "Calendário e Visão Geral":
     calendar(events=calendar_events, options={"headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"}, "initialView": "timeGridWeek", "locale": "pt-br"})
 
 # ==========================================================
-# OUTRAS PÁGINAS
+# PÁGINA "CADASTROS" UNIFICADA
 # ==========================================================
-elif menu == "Organizar Tarefas da Casa":
-    st.title("🏠 Organizar Tarefas da Semana")
-    with st.form("form_tarefas", clear_on_submit=True):
-        dia_pt = st.selectbox("Selecione o dia da semana", options=list(DIAS_PT.values()))
-        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
-        tarefa = st.text_input("Qual tarefa você quer agendar?", placeholder="Ex: Lavar roupa, Fazer feira")
-        if st.form_submit_button("Agendar Tarefa"):
-            if tarefa:
-                nova_tarefa = pd.DataFrame([[dia_en, tarefa]], columns=["dia_semana", "tarefa"])
-                df_tarefas = pd.concat([df_tarefas, nova_tarefa], ignore_index=True)
-                df_tarefas.to_csv(TAREFAS_CSV, index=False)
-                st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="�")
-    st.markdown("### Seu Cronograma de Tarefas")
-    for index, row in df_tarefas.iterrows():
-        col1, col2 = st.columns([0.9, 0.1])
-        dia_pt = DIAS_PT.get(row['dia_semana'], '')
-        col1.write(f"**{dia_pt}**: {row['tarefa']}")
-        if col2.button("Excluir", key=f"del_tarefa_{index}"):
-            df_tarefas.drop(index, inplace=True)
-            df_tarefas.to_csv(TAREFAS_CSV, index=False)
-            st.rerun()
+elif menu == "Cadastros":
+    st.title("⚙️ Central de Cadastros")
+    
+    tipo_cadastro = st.selectbox("O que você deseja cadastrar ou gerenciar?", 
+                                 ["Aulas", "Compromissos", "Tarefas da Casa", "Hábitos Personalizados"])
 
+    if tipo_cadastro == "Aulas":
+        st.subheader("📚 Gerenciar Disciplinas e Aulas")
+        with st.form("form_aulas", clear_on_submit=True):
+            disciplina = st.text_input("Nome da Disciplina")
+            sala = st.text_input("Sala (opcional)")
+            dias_selecionados = st.multiselect("Selecione os dias da semana para esta disciplina:", options=list(DIAS_PT.values()))
+            horarios = {}
+            for dia_pt in dias_selecionados:
+                st.markdown(f"--- \n **Horário para {dia_pt}**")
+                col1, col2 = st.columns(2)
+                hora_inicio = col1.time_input("Hora de Início", key=f"inicio_{dia_pt}")
+                hora_fim = col2.time_input("Hora de Término", key=f"fim_{dia_pt}")
+                horarios[dia_pt] = (hora_inicio, hora_fim)
+            if st.form_submit_button("Salvar Disciplina e Horários"):
+                for dia_pt, (inicio, fim) in horarios.items():
+                    if inicio and fim:
+                        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+                        nova_aula = pd.DataFrame([[disciplina, sala, dia_en, inicio.strftime('%H:%M'), fim.strftime('%H:%M')]], columns=colunas_aulas)
+                        df_aulas = pd.concat([df_aulas, nova_aula], ignore_index=True)
+                df_aulas.to_csv(AULAS_CSV, index=False)
+                st.success(f"Disciplina '{disciplina}' salva com sucesso!")
+
+        st.markdown("### Aulas Cadastradas")
+        for index, row in df_aulas.iterrows():
+            col1, col2 = st.columns([0.9, 0.1])
+            dia_pt = DIAS_PT.get(row['dia_semana'], '')
+            col1.write(f"**{row['disciplina']}** - {dia_pt} ({row['hora_inicio']} - {row['hora_fim']}) Sala: {row['sala']}")
+            if col2.button("Excluir", key=f"del_aula_{index}"):
+                df_aulas.drop(index, inplace=True)
+                df_aulas.to_csv(AULAS_CSV, index=False)
+                st.rerun()
+
+    elif tipo_cadastro == "Compromissos":
+        st.subheader("🗓️ Agendar Compromissos")
+        recorrente = st.checkbox("É um compromisso recorrente? (Ex: estudar, se exercitar)")
+        if recorrente:
+            st.markdown("#### Cadastrar Compromisso Recorrente")
+            with st.form("form_recorrente", clear_on_submit=True):
+                titulo = st.text_input("Título do Compromisso (Ex: Academia, Estudar Python)")
+                tipo = st.selectbox("Tipo de Compromisso", ["Estudo", "Exercício", "Lembrete", "Outro"])
+                dias_recorrentes = st.multiselect("Selecione os dias em que se repete:", options=list(DIAS_PT.values()))
+                col1, col2 = st.columns(2)
+                hora_inicio_rec = col1.time_input("Hora de Início")
+                hora_fim_rec = col2.time_input("Hora de Término (opcional)")
+                if st.form_submit_button("Salvar Compromisso Recorrente"):
+                    for dia_pt in dias_recorrentes:
+                        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+                        nova_ativ = pd.DataFrame([[titulo, tipo, dia_en, hora_inicio_rec.strftime('%H:%M'), hora_fim_rec.strftime('%H:%M') if hora_fim_rec else '']], columns=colunas_atividades_recorrentes)
+                        df_atividades_recorrentes = pd.concat([df_atividades_recorrentes, nova_ativ], ignore_index=True)
+                    df_atividades_recorrentes.to_csv(ATIVIDADES_RECORRENTES_CSV, index=False)
+                    st.success("Compromisso recorrente salvo!")
+            st.markdown("#### Compromissos Recorrentes Cadastrados")
+            for index, row in df_atividades_recorrentes.iterrows():
+                col1, col2 = st.columns([0.9, 0.1])
+                dia_pt = DIAS_PT.get(row['dia_semana'], '')
+                col1.write(f"**{row['titulo']}** ({row['tipo']}) - {dia_pt} ({row['hora_inicio']})")
+                if col2.button("Excluir", key=f"del_ativ_rec_{index}"):
+                    df_atividades_recorrentes.drop(index, inplace=True)
+                    df_atividades_recorrentes.to_csv(ATIVIDADES_RECORRENTES_CSV, index=False)
+                    st.rerun()
+        else:
+            st.markdown("#### Cadastrar Compromisso Único")
+            with st.form("form_eventos", clear_on_submit=True):
+                data = st.date_input("Data do Compromisso")
+                tipo = st.selectbox("Tipo de Compromisso", ["Prova", "Trabalho", "Consulta", "Lembrete"])
+                titulo = st.text_input("Título (Ex: Prova de Cálculo, Dentista)")
+                col1, col2 = st.columns(2)
+                hora_inicio = col1.time_input("Hora de Início (opcional)", value=None)
+                hora_fim = col2.time_input("Hora de Término (opcional)", value=None)
+                descricao = st.text_area("Descrição (Opcional)")
+                if st.form_submit_button("Salvar Compromisso"):
+                    hora_inicio_str = hora_inicio.strftime('%H:%M') if hora_inicio else ''
+                    hora_fim_str = hora_fim.strftime('%H:%M') if hora_fim else ''
+                    nova = pd.DataFrame([[data.strftime("%Y-%m-%d"), tipo, titulo, descricao, hora_inicio_str, hora_fim_str]], columns=colunas_eventos)
+                    df_eventos = pd.concat([df_eventos, nova], ignore_index=True)
+                    df_eventos.to_csv(EVENTOS_CSV, index=False)
+                    st.toast("Compromisso salvo!", icon="✅")
+            st.markdown("#### Compromissos Únicos Cadastrados")
+            for index, row in df_eventos.iterrows():
+                col1, col2 = st.columns([0.9, 0.1])
+                col1.write(f"**{row['data']}** - {row['titulo']} ({row['tipo']})")
+                if col2.button("Excluir", key=f"del_evento_{index}"):
+                    df_eventos.drop(index, inplace=True)
+                    df_eventos.to_csv(EVENTOS_CSV, index=False)
+                    st.rerun()
+
+    elif tipo_cadastro == "Tarefas da Casa":
+        st.subheader("🏠 Organizar Tarefas da Semana")
+        with st.form("form_tarefas", clear_on_submit=True):
+            dia_pt = st.selectbox("Selecione o dia da semana", options=list(DIAS_PT.values()))
+            dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+            tarefa = st.text_input("Qual tarefa você quer agendar?", placeholder="Ex: Lavar roupa, Fazer feira")
+            if st.form_submit_button("Agendar Tarefa"):
+                if tarefa:
+                    nova_tarefa = pd.DataFrame([[dia_en, tarefa]], columns=["dia_semana", "tarefa"])
+                    df_tarefas = pd.concat([df_tarefas, nova_tarefa], ignore_index=True)
+                    df_tarefas.to_csv(TAREFAS_CSV, index=False)
+                    st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="👍")
+        st.markdown("### Seu Cronograma de Tarefas")
+        for index, row in df_tarefas.iterrows():
+            col1, col2 = st.columns([0.9, 0.1])
+            dia_pt = DIAS_PT.get(row['dia_semana'], '')
+            col1.write(f"**{dia_pt}**: {row['tarefa']}")
+            if col2.button("Excluir", key=f"del_tarefa_{index}"):
+                df_tarefas.drop(index, inplace=True)
+                df_tarefas.to_csv(TAREFAS_CSV, index=False)
+                st.rerun()
+
+    elif tipo_cadastro == "Hábitos Personalizados":
+        st.subheader("🎨 Personalizar Hábitos")
+        st.write("Adicione ou remova os hábitos que você deseja acompanhar no seu dia a dia (sem horário fixo).")
+        with st.form("form_novo_habito", clear_on_submit=True):
+            novo_habito_txt = st.text_input("Digite um novo hábito (Ex: Cuidar da pele, Ler 10 páginas)")
+            if st.form_submit_button("Adicionar Hábito"):
+                if novo_habito_txt and novo_habito_txt not in df_meus_habitos["habito"].values:
+                    novo_df = pd.DataFrame([[novo_habito_txt]], columns=["habito"])
+                    df_meus_habitos = pd.concat([df_meus_habitos, novo_df], ignore_index=True)
+                    df_meus_habitos.to_csv(MEUS_HABITOS_CSV, index=False)
+                    st.toast(f'Hábito "{novo_habito_txt}" adicionado!', icon="✨")
+                else:
+                    st.warning("Hábito já existe ou campo está vazio.")
+        st.markdown("### Seus Hábitos Atuais")
+        if not df_meus_habitos.empty:
+            for index, row in df_meus_habitos.iterrows():
+                col1, col2 = st.columns([0.8, 0.2])
+                col1.write(f"- {row['habito']}")
+                if col2.button("Excluir", key=f"del_{index}"):
+                    df_meus_habitos.drop(index, inplace=True)
+                    df_meus_habitos.to_csv(MEUS_HABITOS_CSV, index=False)
+                    st.rerun()
+        else:
+            st.info("Você ainda não adicionou nenhum hábito personalizado.")
+
+# ==========================================================
+# PÁGINA "LISTA DE COMPRAS"
+# ==========================================================
 elif menu == "Lista de Compras":
     st.title("🛒 Lista de Compras")
     with st.form("form_compras", clear_on_submit=True):
@@ -424,28 +445,3 @@ elif menu == "Lista de Compras":
         df_compras.to_csv(COMPRAS_CSV, index=False)
         st.toast("Lista limpa!", icon="🗑️")
         st.rerun()
-
-elif menu == "Personalizar Hábitos":
-    st.title("🎨 Personalizar Hábitos")
-    st.write("Adicione ou remova os hábitos que você deseja acompanhar no seu dia a dia.")
-    with st.form("form_novo_habito", clear_on_submit=True):
-        novo_habito_txt = st.text_input("Digite um novo hábito (Ex: Cuidar da pele, Ler 10 páginas)")
-        if st.form_submit_button("Adicionar Hábito"):
-            if novo_habito_txt and novo_habito_txt not in df_meus_habitos["habito"].values:
-                novo_df = pd.DataFrame([[novo_habito_txt]], columns=["habito"])
-                df_meus_habitos = pd.concat([df_meus_habitos, novo_df], ignore_index=True)
-                df_meus_habitos.to_csv(MEUS_HABITOS_CSV, index=False)
-                st.toast(f'Hábito "{novo_habito_txt}" adicionado!', icon="✨")
-            else:
-                st.warning("Hábito já existe ou campo está vazio.")
-    st.markdown("### Seus Hábitos Atuais")
-    if not df_meus_habitos.empty:
-        for index, row in df_meus_habitos.iterrows():
-            col1, col2 = st.columns([0.8, 0.2])
-            col1.write(f"- {row['habito']}")
-            if col2.button("Excluir", key=f"del_{index}"):
-                df_meus_habitos.drop(index, inplace=True)
-                df_meus_habitos.to_csv(MEUS_HABITOS_CSV, index=False)
-                st.rerun()
-    else:
-        st.info("Você ainda não adicionou nenhum hábito personalizado.")
