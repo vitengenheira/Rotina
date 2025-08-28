@@ -1,62 +1,101 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import random
+import base64
+from streamlit_calendar import calendar # Importa o novo componente de calendário
 
 # --- Configuração da Página ---
-st.set_page_config(page_title="Minha Rotina", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Minha Rotina", page_icon="🧘‍♀️", layout="wide")
 
-# --- Estilo CSS Customizado ---
-st.markdown("""
-<style>
-    /* Estilo para os botões */
-    .stButton > button {
-        border-radius: 12px;
-        border: 2px solid #007BFF;
-        color: #007BFF;
-        background-color: transparent;
-        transition: all 0.2s ease-in-out;
-    }
-    .stButton > button:hover {
-        border-color: #0056b3;
-        color: white;
-        background-color: #007BFF;
-    }
-    /* Aumenta o tamanho da fonte nos cabeçalhos dos expanders */
-    .st-expander header {
-        font-size: 1.25rem;
-        font-weight: bold;
-    }
-    /* Estilo para os itens da lista de compromissos e tarefas */
-    .item-container {
-        padding: 8px;
-        border-left: 4px solid #007BFF;
-        margin-bottom: 8px;
-        background-color: #f0f2f6;
-        border-radius: 4px;
-    }
-    /* Estilo para a Frase do Dia */
-    .quote-container {
-        padding: 1rem;
-        background-color: #e6f3ff;
-        border-left: 5px solid #007BFF;
-        border-radius: 5px;
-        margin-bottom: 1rem;
-        font-style: italic;
-    }
-</style>
-""", unsafe_allow_html=True)
+# --- FUNÇÃO PARA ADICIONAR IMAGEM DE FUNDO ---
+def set_bg_hack(main_bg):
+    main_bg_ext = "png"
+    st.markdown(
+         f"""
+         <style>
+         .stApp {{
+             background: url(data:image/{main_bg_ext};base64,{base64.b64encode(open(main_bg, "rb").read()).decode()});
+             background-size: cover;
+             background-repeat: no-repeat;
+             background-attachment: fixed;
+         }}
+         /* Efeito de vidro para o bloco principal */
+         [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {{
+            background-color: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 15px;
+            margin-top: 2rem;
+         }}
+         /* Remove o fundo branco do menu lateral */
+         [data-testid="stSidebar"] > div:first-child {{
+             background: transparent;
+         }}
+         /* Estilo para os botões */
+         .stButton > button {{
+             border-radius: 20px;
+             border: 2px solid #8A2BE2; /* Roxo azulado */
+             color: #8A2BE2;
+             background-color: transparent;
+             transition: all 0.3s ease-in-out;
+             font-weight: bold;
+         }}
+         .stButton > button:hover {{
+             border-color: #4B0082; /* Indigo */
+             color: white;
+             background-color: #8A2BE2;
+             transform: scale(1.05);
+             box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
+         }}
+         /* Aumenta o tamanho da fonte nos cabeçalhos dos expanders */
+         .st-expander header {{
+             font-size: 1.25rem;
+             font-weight: bold;
+             color: #4B0082;
+         }}
+         /* Estilo para os itens da lista */
+         .item-container {{
+             padding: 10px;
+             border-left: 4px solid #9370DB; /* Roxo médio */
+             margin-bottom: 8px;
+             background-color: rgba(255, 255, 255, 0.7);
+             border-radius: 8px;
+             transition: all 0.2s ease-in-out;
+         }}
+         .item-container:hover {{
+            transform: translateX(5px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+         }}
+         /* Estilo para a Frase do Dia */
+         .quote-container {{
+             padding: 1rem;
+             background-color: rgba(230, 230, 250, 0.8); /* Lavanda com transparência */
+             border-left: 5px solid #8A2BE2;
+             border-radius: 8px;
+             margin-bottom: 1rem;
+             font-style: italic;
+             text-align: center;
+             font-size: 1.1rem;
+             color: #4B0082;
+         }}
+         </style>
+         """,
+         unsafe_allow_html=True
+     )
 
+if os.path.exists("background.png"):
+    set_bg_hack("background.png")
 
-# --- Arquivos para armazenar dados ---
+# --- Arquivos de Dados ---
 AULAS_CSV = "aulas.csv"
 EVENTOS_CSV = "eventos.csv"
 HABITOS_CSV = "habitos.csv"
 TAREFAS_CSV = "tarefas_semanais.csv"
 COMPRAS_CSV = "lista_compras.csv"
 
-# --- Lista de Frases do Dia ---
+# --- Constantes e Dicionários ---
 FRASES = [
     "O sucesso é a soma de pequenos esforços repetidos dia após dia.",
     "Comece onde você está. Use o que você tem. Faça o que você pode.",
@@ -64,10 +103,14 @@ FRASES = [
     "O único lugar onde o sucesso vem antes do trabalho é no dicionário.",
     "A persistência realiza o impossível."
 ]
+DIAS_PT = {
+    "Monday": "Segunda-feira", "Tuesday": "Terça-feira", "Wednesday": "Quarta-feira",
+    "Thursday": "Quinta-feira", "Friday": "Sexta-feira", "Saturday": "Sábado", "Sunday": "Domingo"
+}
+DIAS_EN = list(DIAS_PT.keys())
 
-# --- Função para carregar CSV ---
+# --- Funções Auxiliares ---
 def carregar_csv(caminho, colunas):
-    """Carrega um arquivo CSV. Se não existir, cria um DataFrame vazio."""
     if not os.path.exists(caminho):
         return pd.DataFrame(columns=colunas)
     df = pd.read_csv(caminho)
@@ -76,7 +119,7 @@ def carregar_csv(caminho, colunas):
             df[col] = False if col == 'comprado' else ''
     return df
 
-# --- Inicializar dataframes ---
+# --- Inicializar DataFrames ---
 colunas_habitos = ["data", "agua", "exercicio", "hobby", "leitura", "meditacao"]
 df_aulas = carregar_csv(AULAS_CSV, ["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
 df_eventos = carregar_csv(EVENTOS_CSV, ["data", "tipo", "titulo", "descricao"])
@@ -84,42 +127,36 @@ df_habitos = carregar_csv(HABITOS_CSV, colunas_habitos)
 df_tarefas = carregar_csv(TAREFAS_CSV, ["dia_semana", "tarefa"])
 df_compras = carregar_csv(COMPRAS_CSV, ["item", "comprado"])
 
-# --- Menu lateral ---
-menu = st.sidebar.radio("Menu", ["Hoje", "Cadastrar Aulas", "Cadastrar Evento", "Organizar Tarefas da Casa", "Lista de Compras"])
+# --- Menu Lateral ---
+menu = st.sidebar.radio("Menu", ["Hoje", "Calendário e Visão Geral", "Cadastrar Aulas", "Cadastrar Evento", "Organizar Tarefas da Casa", "Lista de Compras"])
 
 # ==========================================================
 # PÁGINA "HOJE"
 # ==========================================================
 if menu == "Hoje":
     st.title("📅 Minha Rotina")
-
     hoje_dt = datetime.now()
     hoje_str = hoje_dt.strftime("%Y-%m-%d")
     dia_semana_en = hoje_dt.strftime("%A")
-
-    dias_pt = {
-        "Monday": "Segunda-feira", "Tuesday": "Terça-feira", "Wednesday": "Quarta-feira",
-        "Thursday": "Quinta-feira", "Friday": "Sexta-feira", "Saturday": "Sábado", "Sunday": "Domingo"
-    }
-    dia_semana_pt = dias_pt.get(dia_semana_en, dia_semana_en)
+    dia_semana_pt = DIAS_PT.get(dia_semana_en, dia_semana_en)
 
     st.header(f"Resumo de hoje: {dia_semana_pt}, {hoje_dt.strftime('%d/%m/%Y')}")
 
     # Frase do Dia
-    semente_diaria = hoje_dt.day + hoje_dt.month + hoje_dt.year
-    random.seed(semente_diaria)
+    random.seed(hoje_dt.toordinal())
     frase_escolhida = random.choice(FRASES)
     st.markdown(f'<div class="quote-container">"{frase_escolhida}"</div>', unsafe_allow_html=True)
 
-    # Aulas de Hoje
+    # Aulas, Compromissos e Tarefas
     aulas_hoje = df_aulas[df_aulas["dia"] == dia_semana_en].sort_values("hora_inicio")
+    eventos_hoje = df_eventos[df_eventos["data"] == hoje_str]
+    tarefas_de_hoje = df_tarefas[df_tarefas['dia_semana'] == dia_semana_en]
+
     if not aulas_hoje.empty:
         with st.expander("📚 Suas Aulas de Hoje", expanded=True):
             for _, aula in aulas_hoje.iterrows():
                 st.markdown(f"- **{aula['hora_inicio']} - {aula['hora_fim']}:** Aula de **{aula['disciplina']}** na sala **{aula['sala']}**.")
     
-    # Compromissos de Hoje
-    eventos_hoje = df_eventos[df_eventos["data"] == hoje_str]
     if not eventos_hoje.empty:
         with st.expander("🗓️ Seus Compromissos de Hoje", expanded=True):
             icones_tipo = {"Prova": "📝", "Trabalho": "💼", "Consulta": "🩺", "Estudo": "📚", "Lembrete": "📌"}
@@ -127,8 +164,6 @@ if menu == "Hoje":
                 icone = icones_tipo.get(evento['tipo'], "🔔")
                 st.markdown(f"""<div class="item-container">{icone} **{evento['tipo']}: {evento['titulo']}** <br><small>{evento['descricao']}</small></div>""", unsafe_allow_html=True)
 
-    # Tarefas da Casa de Hoje
-    tarefas_de_hoje = df_tarefas[df_tarefas['dia_semana'] == dia_semana_en]
     if not tarefas_de_hoje.empty:
         with st.expander("🏠 Tarefas da Casa", expanded=True):
             for _, tarefa in tarefas_de_hoje.iterrows():
@@ -144,7 +179,8 @@ if menu == "Hoje":
 
     # Autocuidado & Hábitos
     st.subheader("💧 Autocuidado & Hábitos")
-    # ... (código de hábitos permanece o mesmo) ...
+    # ... (código de hábitos permanece o mesmo, já está em português) ...
+    # ... (código de hábitos permanece o mesmo, já está em português) ...
     if hoje_str in df_habitos["data"].values:
         habito_hoje = df_habitos[df_habitos["data"] == hoje_str].iloc[0]
         agua, exercicio, hobby, leitura, meditacao = int(habito_hoje["agua"]), bool(habito_hoje["exercicio"]), bool(habito_hoje["hobby"]), bool(habito_hoje["leitura"]), bool(habito_hoje["meditacao"])
@@ -171,20 +207,78 @@ if menu == "Hoje":
         st.toast("Seus hábitos foram salvos!", icon="🎉")
 
 # ==========================================================
+# PÁGINA "CALENDÁRIO"
+# ==========================================================
+elif menu == "Calendário e Visão Geral":
+    st.title("🗓️ Calendário e Visão Geral")
+    st.write("Visualize seus compromissos, aulas e tarefas do mês.")
+
+    calendar_events = []
+    
+    # Adicionar eventos (provas, consultas, etc.)
+    cores_eventos = {"Prova": "#FF4B4B", "Trabalho": "#FFA500", "Consulta": "#1E90FF", "Estudo": "#32CD32", "Lembrete": "#9370DB"}
+    for _, row in df_eventos.iterrows():
+        calendar_events.append({
+            "title": f"{row['tipo']}: {row['titulo']}",
+            "start": row["data"],
+            "end": row["data"],
+            "color": cores_eventos.get(row['tipo'], "#808080")
+        })
+
+    # Adicionar aulas e tarefas recorrentes para os próximos 60 dias
+    hoje = datetime.now()
+    for i in range(60):
+        data_atual = hoje + timedelta(days=i)
+        dia_semana_en = data_atual.strftime("%A")
+        
+        # Aulas
+        aulas_do_dia = df_aulas[df_aulas['dia'] == dia_semana_en]
+        for _, aula in aulas_do_dia.iterrows():
+            calendar_events.append({
+                "title": f"Aula: {aula['disciplina']}",
+                "start": data_atual.strftime("%Y-%m-%d"),
+                "end": data_atual.strftime("%Y-%m-%d"),
+                "color": "#4B0082" # Indigo para aulas
+            })
+            
+        # Tarefas da casa
+        tarefas_do_dia = df_tarefas[df_tarefas['dia_semana'] == dia_semana_en]
+        for _, tarefa in tarefas_do_dia.iterrows():
+            calendar_events.append({
+                "title": f"Casa: {tarefa['tarefa']}",
+                "start": data_atual.strftime("%Y-%m-%d"),
+                "end": data_atual.strftime("%Y-%m-%d"),
+                "color": "#2E8B57" # Verde mar para tarefas
+            })
+
+    # Configurações do calendário
+    calendar_options = {
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": "dayGridMonth,timeGridWeek,timeGridDay",
+        },
+        "initialView": "dayGridMonth",
+        "locale": "pt-br", # Traduz o calendário para português
+    }
+
+    calendar(events=calendar_events, options=calendar_options)
+
+# ==========================================================
 # PÁGINAS DE CADASTRO
 # ==========================================================
 elif menu == "Cadastrar Aulas":
     st.title("📚 Cadastrar Aulas")
-    # ... (código de cadastro de aulas permanece o mesmo) ...
     with st.form("form_aulas", clear_on_submit=True):
-        dias_semana = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        dia = st.selectbox("Dia da semana", dias_semana)
-        hora_inicio = st.text_input("Hora início (HH:MM)", "07:10")
-        hora_fim = st.text_input("Hora fim (HH:MM)", "08:00")
+        dia_pt = st.selectbox("Dia da semana", options=list(DIAS_PT.values()))
+        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+        
+        hora_inicio = st.text_input("Hora de início (HH:MM)", "07:10")
+        hora_fim = st.text_input("Hora de término (HH:MM)", "08:00")
         disciplina = st.text_input("Disciplina")
         sala = st.text_input("Sala")
         if st.form_submit_button("Salvar Aula"):
-            nova = pd.DataFrame([[dia, hora_inicio, hora_fim, disciplina, sala]], columns=["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
+            nova = pd.DataFrame([[dia_en, hora_inicio, hora_fim, disciplina, sala]], columns=["dia", "hora_inicio", "hora_fim", "disciplina", "sala"])
             df_aulas = pd.concat([df_aulas, nova], ignore_index=True)
             df_aulas.to_csv(AULAS_CSV, index=False)
             st.toast("Aula cadastrada!", icon="✅")
@@ -192,7 +286,6 @@ elif menu == "Cadastrar Aulas":
 
 elif menu == "Cadastrar Evento":
     st.title("🗓️ Cadastrar Novo Evento")
-    # ... (código de cadastro de evento permanece o mesmo) ...
     with st.form("form_eventos", clear_on_submit=True):
         data = st.date_input("Data do Evento")
         tipo = st.selectbox("Tipo de Evento", ["Prova", "Trabalho", "Consulta", "Estudo", "Lembrete"])
@@ -205,27 +298,22 @@ elif menu == "Cadastrar Evento":
             st.toast("Evento salvo!", icon="✅")
     st.markdown("### Eventos Cadastrados"); st.dataframe(df_eventos)
 
-# ==========================================================
-# PÁGINA "ORGANIZAR TAREFAS DA CASA"
-# ==========================================================
 elif menu == "Organizar Tarefas da Casa":
     st.title("🏠 Organizar Tarefas da Semana")
     with st.form("form_tarefas", clear_on_submit=True):
-        dias_semana = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        dia = st.selectbox("Selecione o dia da semana", dias_semana)
+        dia_pt = st.selectbox("Selecione o dia da semana", options=list(DIAS_PT.values()))
+        dia_en = [k for k, v in DIAS_PT.items() if v == dia_pt][0]
+        
         tarefa = st.text_input("Qual tarefa você quer agendar?", placeholder="Ex: Lavar roupa, Fazer feira, Spa Day")
         if st.form_submit_button("Agendar Tarefa"):
             if tarefa:
-                nova_tarefa = pd.DataFrame([[dia, tarefa]], columns=["dia_semana", "tarefa"])
+                nova_tarefa = pd.DataFrame([[dia_en, tarefa]], columns=["dia_semana", "tarefa"])
                 df_tarefas = pd.concat([df_tarefas, nova_tarefa], ignore_index=True)
                 df_tarefas.to_csv(TAREFAS_CSV, index=False)
-                st.toast(f'Tarefa "{tarefa}" agendada para toda {dias_pt.get(dia, dia)}!', icon="👍")
+                st.toast(f'Tarefa "{tarefa}" agendada para toda {dia_pt}!', icon="👍")
     st.markdown("### Seu Cronograma de Tarefas")
     st.dataframe(df_tarefas)
 
-# ==========================================================
-# PÁGINA "LISTA DE COMPRAS"
-# ==========================================================
 elif menu == "Lista de Compras":
     st.title("🛒 Lista de Compras")
     with st.form("form_compras", clear_on_submit=True):
@@ -238,15 +326,12 @@ elif menu == "Lista de Compras":
                 st.toast(f'"{item}" adicionado à lista!', icon="➕")
 
     st.markdown("### Itens para comprar:")
-    
-    # Itera sobre o dataframe para criar os checkboxes
     for index, row in df_compras.iterrows():
         comprado = st.checkbox(row["item"], value=bool(row["comprado"]), key=f"item_{index}")
-        # Se o estado do checkbox mudou, atualiza o dataframe
         if comprado != bool(row["comprado"]):
             df_compras.at[index, "comprado"] = comprado
             df_compras.to_csv(COMPRAS_CSV, index=False)
-            st.rerun() # Recarrega a página para refletir a mudança
+            st.rerun()
 
     if not df_compras.empty and st.button("Limpar itens comprados"):
         df_compras = df_compras[df_compras["comprado"] == False]
