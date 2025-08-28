@@ -65,21 +65,35 @@ if menu == "Hoje":
     # --- Hábitos ---
     st.markdown("### 💧 Hábitos do Dia")
 
+    # Configuração da meta e copo
+    meta_agua = 2000  # meta diária em ml
+    copo_padrao = st.number_input("⚙️ Tamanho do copo (ml)", min_value=50, max_value=1000, value=250, step=50)
+
     if hoje in df_habitos["data"].values:
         habito_hoje = df_habitos[df_habitos["data"] == hoje].iloc[0]
-        agua = habito_hoje["agua"]
+        agua = int(habito_hoje["agua"])
         exercicio = bool(habito_hoje["exercicio"])
         hobby = bool(habito_hoje["hobby"])
         leitura = bool(habito_hoje["leitura"])
     else:
         agua, exercicio, hobby, leitura = 0, False, False, False
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("💧 Beber 1 copo de água"):
-            agua += 1
-    st.write(f"Copos de água hoje: {agua}")
+        if st.button(f"💧 Beber 1 copo (+{copo_padrao} ml)"):
+            agua += copo_padrao
+    with col2:
+        if st.button("🥤 Beber 500 ml"):
+            agua += 500
+    with col3:
+        if st.button("🍼 Beber 1 garrafa (2000 ml)"):
+            agua += 2000
 
+    # Exibição do total de água
+    st.progress(min(1.0, agua / meta_agua))
+    st.write(f"Você já bebeu **{agua} ml** de água hoje. Meta: {meta_agua} ml")
+
+    # Outros hábitos
     exercicio = st.checkbox("✅ Fiz exercício", value=exercicio)
     hobby = st.checkbox("🎸 Fiz hobby/violão", value=hobby)
     leitura = st.checkbox("📖 Fiz leitura", value=leitura)
